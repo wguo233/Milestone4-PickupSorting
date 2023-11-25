@@ -1,7 +1,7 @@
 # Milestone4-PickupSorting
 Picking and Sorting mechanism for the MME 4487 Robot Scavenger Project  
 
-The pickup and sorting system is comprised of an arm and a gripper, both controlled using an RC servo motor. The colour detector is placed inside the gripper and will read values when the gripper is closed. The system inititated using a push button to prevent unintended actions when objects are approaching the colour sensor, but not in the desired place for pickup.  
+The pickup and sorting system is comprised of an arm and a gripper, both controlled using an RC servo motor. The colour detector is placed inside the gripper and will read values when the gripper is closed. The system is initiated using a push button to prevent unintended actions when objects are approaching the colour sensor, but not in the desired place for pickup.  
 
 The process:  
 1. On startup, the gripper will close and the colour detector will read RGB values and sum them. This will be the value of ambient light.  
