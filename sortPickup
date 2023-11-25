@@ -8,7 +8,7 @@
 //
 
 // #define OUTPUT_ON                                    // uncomment to turn on output debugging information
-#define PRINT_COLOUR
+// #define PRINT_COLOUR
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -19,14 +19,27 @@
 void doHeartbeat();
 long degreesToDutyCycle(int deg);
 
+// Button structure
+struct Button {
+  const int pin;                                      // GPIO pin for button
+  unsigned int numberPresses;                         // counter for number of button presses
+  unsigned int lastPressTime;                         // time of last button press in ms
+  bool pressed;                                       // flag for button press event
+  bool state;                                         // current state of button; 0 = pressed; 1 = unpressed
+  bool lastState;                                     // last state of button
+};
+
 // Constants
 const int ci_HeartbeatLED = 2;                       // GPIO pin of built-in LED for heartbeat
 const int ci_HeartbeatInterval = 500;                // heartbeat blink interval, in milliseconds
-const int ci_ServoPin = 15;                          // GPIO pin for servo motor ARM
+const int ci_ServoPin = 17;                          // GPIO pin for servo motor ARM
 const int ci_Servo1Pin = 16;
 const int ci_ServoArm = 5;                       // PWM channel used for the RC servo motor
 const int ci_ServoGrip = 4;                       // PWM channel used for the RC servo motor
 const int cTCSLED = 23;                               // GPIO pin for LED on TCS34725
+const long cDebounceDelay = 20;                       // button debounce delay in milliseconds
+const int ul_ArmDelay = 40;                             // servo arm motor ms change limiter for smooth transition
+const int ul_GripDelay = 10;                            // grip motor delay
 
 // Variables
 boolean b_Heartbeat = true;                          // state of heartbeat LED
@@ -35,18 +48,30 @@ unsigned long ul_CurMillis = 0;                      // current time, in millise
 unsigned long ul_PrevMillis = 0;                     // start time for delay cycle, in milliseconds
 Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_2_4MS, TCS34725_GAIN_4X);
 bool tcsFlag = 0;                                     // TCS34725 flag: 1 = connected; 0 = not found
+int i_ServoArmPos = 180;                                     
+int i_ServoGripPos = 75;
+int i_ServoArmStart = 180;
+int i_ServoArmFinish = 30;
+int i_ServoGripStart = 75;
+int i_ServoGripFinish = 160;
+unsigned int ui_State = 0;                           // current operating state
+Button buttonScan = {13, 0, 0, false, true, true};     // NO pushbutton on GPIO 13, low state when pressed
+bool pickup = false;
+bool badobj = false;
+bool goodobj = false;
 
 void setup() {
 
     Serial.begin(115200);                            // Standard baud rate for ESP32 serial monitor
 
   pinMode(ci_HeartbeatLED, OUTPUT);                  // configure built-in LED for heartbeat
-  pinMode(ci_PotPin, INPUT);                         // configure potentiometer pin for input
   ledcAttachPin(ci_ServoPin, ci_ServoArm);       // assign servo pin to servo channel
-  ledcSetup(ci_ServoArm, 50, 16);                // setup for channel for 50 Hz, 16-bit resolution
+  ledcSetup(ci_ServoArm, 50, 16);                // setup for channel for 50 Hz, 16-bit resolutio
   ledcAttachPin(ci_Servo1Pin, ci_ServoGrip);       // assign servo pin to servo channel
   ledcSetup(ci_ServoGrip, 50, 16);                // setup for channel for 50 Hz, 16-bit resolution
   pinMode(cTCSLED, OUTPUT);                           // configure GPIO for control of LED on TCS34725
+  pinMode(buttonScan.pin, INPUT_PULLUP);
+  attachInterruptArg(buttonScan.pin, buttonISR, &buttonScan, CHANGE);
 
   // Connect to TCS34725 colour sensor
   if (tcs.begin()) {
@@ -67,40 +92,149 @@ void loop() {
   if (tcsFlag) {                                      // if colour sensor initialized
     tcs.getRawData(&r, &g, &b, &c);                   // get raw RGBC values
   #ifdef PRINT_COLOUR            
-      Serial.printf("R: %d, G: %d, B: %d, C %d\n", r, g, b, c);
+      Serial.printf("R: %d, G: %d, B: %d, C %d,\n", r, g, b, c);
   #endif
   }
+  int totalAmb = 7;
+  if (!buttonScan.state) {
+    int scanned = r + g + b;
+    pickup = true;
+    if (abs(scanned - totalAmb) > 2) {
+      if (scanned > 10) {
+        badobj = true;
+      } else {
+        goodobj = true;
+      }
+    }
+    Serial.printf("Ambient: %d, Scanned: %d\n", totalAmb, scanned);
+  }
+  if (pickup && goodobj){
+    switch(ui_State) {
+      case 0: {
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoGripPos < i_ServoGripFinish){
+            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
+            i_ServoGripPos++;
+          }
+          if (i_ServoGripPos >= i_ServoGripFinish){
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 1: {
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoArmPos > i_ServoArmFinish){
+            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+            i_ServoArmPos--;
+          }
+          if (i_ServoArmPos <= i_ServoArmFinish){
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 2: {
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoGripPos > i_ServoGripStart){
+            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
+            i_ServoGripPos--;
+          }
+          if (i_ServoGripPos <= i_ServoGripStart){
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 3: {
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoArmPos < i_ServoArmStart){
+            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+            i_ServoArmPos++;
+          }
+          if (i_ServoArmPos >= i_ServoArmStart){
+            ui_State = 0;
+            pickup = false;
+            badobj = false;
+            goodobj = false;
+          }
+        }
+      }
+      break;
+    }
+  }
+if (pickup && badobj){
+    switch(ui_State) {
+      case 0: {
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoGripPos < i_ServoGripFinish){
+            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
+            i_ServoGripPos++;
+          }
+          if (i_ServoGripPos >= i_ServoGripFinish){
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 1: {
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoArmPos > 150){
+            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+            i_ServoArmPos--;
+          }
+          if (i_ServoArmPos <= 150){
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 2: {
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoGripPos > i_ServoGripStart){
+            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
+            i_ServoGripPos--;
+          }
+          if (i_ServoGripPos <= i_ServoGripStart){
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 3: {
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoArmPos < i_ServoArmStart){
+            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+            i_ServoArmPos++;
+          }
+          if (i_ServoArmPos >= i_ServoArmStart){
+            ui_State = 0;
+            pickup = false;
+            badobj = false;
+            goodobj = false;
+          }
+        }
+      }
+      break;
+    }
+  }
 
-  if (r > 1 || g > 1 || b > 1){
-    if (r < 10, g < 10, b < 10){
-      ledcWrite(ci_ServoGrip, degreesToDutyCycle(135));  // set the desired servo position
-      delay(50);
-      for (int i=180; i >= 50; i--){
-        ledcWrite(ci_ServoArm, degreesToDutyCycle(i));
-        delay(10);
-      }
-      ledcWrite(ci_ServoGrip, degreesToDutyCycle(75));  // set the desired servo position
-      delay(50);
-      for (int i=50; i <= 180; i++){
-        ledcWrite(ci_ServoArm, degreesToDutyCycle(i));
-        delay(10);
-      }
-    }
-    else {
-      for (int i=180; i >= 140; i--){
-        ledcWrite(ci_ServoArm, degreesToDutyCycle(i));
-        delay(10);
-      }
-      for (int i=140; i <= 180; i++){
-        ledcWrite(ci_ServoArm, degreesToDutyCycle(i));
-        delay(10);
-      }
-    }
-  }
-  else {
-    ledcWrite(ci_ServoArm, degreesToDutyCycle(180));
-    ledcWrite(ci_ServoGrip, degreesToDutyCycle(75));
-  }
   doHeartbeat();                                     // update heartbeat LED
 }
 
@@ -124,4 +258,18 @@ long degreesToDutyCycle(int deg) {
 
   long l_DutyCycle = map(deg, 0, 180, cl_MinDutyCycle, cl_MaxDutyCycle);  // convert to duty cycle
   return l_DutyCycle;
+}
+
+void ARDUINO_ISR_ATTR buttonISR(void* arg) {
+  Button* s = static_cast<Button*>(arg);              // cast pointer to static structure
+
+  unsigned int pressTime = millis();                  // capture current time
+  s->state = digitalRead(s->pin);                     // capture state of button
+  // if button has been pressed and sufficient time has elapsed
+  if ((!s->state && s->lastState == 1) && (pressTime - s->lastPressTime > cDebounceDelay)) {
+    s->numberPresses += 1;                            // increment button press counter
+    s->pressed = true;                                // set flag for "valid" button press
+  }
+  s->lastPressTime = pressTime;                       // update time of last state change
+  s->lastState = s->state;                            // save last state
 }
