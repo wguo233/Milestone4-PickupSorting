@@ -89,19 +89,16 @@ void loop() {
 
   uint16_t r, g, b, c;                                // RGBC values from TCS34725
   
-  if (tcsFlag) {                                      // if colour sensor initialized
-    tcs.getRawData(&r, &g, &b, &c);                   // get raw RGBC values
-  #ifdef PRINT_COLOUR            
-      Serial.printf("R: %d, G: %d, B: %d, C %d,\n", r, g, b, c);
-  #endif
-  }
-  int totalAmb = 50;
+
+  
+  int totalAmb = 62;
   if (!buttonScan.state) {
     ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));
     i_ServoGripPos = i_ServoGripFinish;
-    delay(100);
+    delay(1000);
+    tcs.getRawData(&r, &g, &b, &c);
     int scanned = r + g + b;
-    if (abs(scanned - totalAmb) > 10) {
+    if (abs(scanned - totalAmb) > 15) {
       pickup = true;
       if (scanned > 50) {
         badobj = true;
