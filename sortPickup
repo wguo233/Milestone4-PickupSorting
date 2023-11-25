@@ -8,7 +8,7 @@
 //
 
 // #define OUTPUT_ON                                    // uncomment to turn on output debugging information
-// #define PRINT_COLOUR
+#define PRINT_COLOUR
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -38,8 +38,8 @@ const int ci_ServoArm = 5;                       // PWM channel used for the RC 
 const int ci_ServoGrip = 4;                       // PWM channel used for the RC servo motor
 const int cTCSLED = 23;                               // GPIO pin for LED on TCS34725
 const long cDebounceDelay = 20;                       // button debounce delay in milliseconds
-const int ul_ArmDelay = 40;                             // servo arm motor ms change limiter for smooth transition
-const int ul_GripDelay = 10;                            // grip motor delay
+const int ul_ArmDelay = 20;                             // servo arm motor ms change limiter for smooth transition
+const int ul_GripDelay = 5;                            // grip motor delay
 
 // Variables
 boolean b_Heartbeat = true;                          // state of heartbeat LED
@@ -95,16 +95,23 @@ void loop() {
       Serial.printf("R: %d, G: %d, B: %d, C %d,\n", r, g, b, c);
   #endif
   }
-  int totalAmb = 7;
+  int totalAmb = 50;
   if (!buttonScan.state) {
+    ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));
+    i_ServoGripPos = i_ServoGripFinish;
+    delay(100);
     int scanned = r + g + b;
-    pickup = true;
-    if (abs(scanned - totalAmb) > 2) {
-      if (scanned > 10) {
+    if (abs(scanned - totalAmb) > 10) {
+      pickup = true;
+      if (scanned > 50) {
         badobj = true;
       } else {
         goodobj = true;
       }
+    }
+    else{
+      ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));
+      i_ServoGripPos = i_ServoGripStart;
     }
     Serial.printf("Ambient: %d, Scanned: %d\n", totalAmb, scanned);
   }
@@ -171,7 +178,7 @@ void loop() {
       break;
     }
   }
-if (pickup && badobj){
+  if (pickup && badobj){
     switch(ui_State) {
       case 0: {
         ul_CurMillis = millis();
