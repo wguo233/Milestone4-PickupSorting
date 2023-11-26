@@ -13,5 +13,4 @@ The process:
 7. For the desired object, the arm will rotate backwards towards the chassis and drop off the object, then rotate back to starting position.
 8. For the undesired object, the arm will rotate 90 degrees upwards, then return to starting position and let go of the object.
 
-The demonstration of the Pickup/Sorting system uses only one microcontroller. The button was included in the same code and breadboard as the servos.  
-For the final robot, the button will be placed on the controller and be included in the controller.ino code from Milestone 3. This pickup and sorting system will also be included in the same file as the drive.ino code similarily.
+The demonstration of the Pickup/Sorting system uses only one microcontroller. The button was included in the same code and breadboard as the servos. For the final robot, the button will be placed on the controller and be included in the controller.ino code from Milestone 3. This pickup and sorting system will also be included in the same file as the drive.ino code similarily.
