@@ -12,3 +12,5 @@ The process:
 6. The white object (undesired) has a high scan value (the summation of RGB) compared to the clear green object (desired), causing the arm and gripper to act differently.
 7. For the desired object, the arm will rotate backwards towards the chassis and drop off the object, then rotate back to starting position.
 8. For the undesired object, the arm will rotate 90 degrees upwards, then return to starting position and let go of the object.
+
+For demonstration of the Pickup/Sorting system, the button was included in the same file.For the completed robot, using only one microcontroller. For the final robot, the button will be placed on the controller and be included in the controller.ino code from Milestone 3. This pickup and sorting system will also be included in the same file as the drive.ino code similarily.
