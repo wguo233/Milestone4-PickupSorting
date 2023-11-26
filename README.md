@@ -11,4 +11,4 @@ The process:
 5. If there is a difference in the recorded summation of RGB values and the ambient light, it assumes there is an object.
 6. The white object (undesired) has a high scan value (the summation of RGB) compared to the clear green object (desired), causing the arm and gripper to act differently.
 7. For the desired object, the arm will rotate backwards towards the chassis and drop off the object, then rotate back to starting position.
-8. For the undesired object, the arm will rotate 30 degrees upwards, drop the object, then return to starting position.
+8. For the undesired object, the arm will rotate 90 degrees upwards, then return to starting position and let go of the object.
