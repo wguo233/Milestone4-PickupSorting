@@ -30,14 +30,14 @@ struct Button {
 // Constants
 const int ci_HeartbeatLED = 2;                       // GPIO pin of built-in LED for heartbeat
 const int ci_HeartbeatInterval = 500;                // heartbeat blink interval, in milliseconds
-const int ci_ServoPin = 17;                          // GPIO pin for servo motor ARM
+const int ci_ServoPin = 18;                          // GPIO pin for servo motor ARM
 const int ci_Servo1Pin = 16;                         // GPIO pin for servo motor GRIP
 const int ci_ServoArm = 5;                           // PWM channel used for the RC servo motor
 const int ci_ServoGrip = 4;                          // PWM channel used for the RC servo motor
 const int cTCSLED = 23;                              // GPIO pin for LED on TCS34725
 const long cDebounceDelay = 20;                      // button debounce delay in milliseconds
-const long ul_ArmDelay = 20;                         // servo arm motor ms change limiter for non-instant transition
-const long ul_GripDelay = 5;                         // grip motor delay
+const long ul_ArmDelay = 7;                         // servo arm motor ms change limiter for non-instant transition
+const long ul_GripDelay = 3;                         // grip motor delay
 
 // Variables
 boolean b_Heartbeat = true;                          // state of heartbeat LED
@@ -58,9 +58,9 @@ bool tcsFlag = 0;                                     // TCS34725 flag: 1 = conn
 
 // Servo motor desired degree positions. Adjust as observed if necessary
 int i_ServoArmStart = 180;
-int i_ServoArmFinish = 30;
+int i_ServoArmFinish = 0;
 int i_ServoGripStart = 75;
-int i_ServoGripFinish = 160;
+int i_ServoGripFinish = 170;
 int i_ServoArmPos = i_ServoArmStart;                                     
 int i_ServoGripPos = i_ServoGripStart;
 
@@ -90,7 +90,6 @@ void setup() {
 
 void loop() {
   uint16_t r, g, b, c;                                // RGBC values from TCS34725
-
   // Calibration process. Determines the ambient light when the colour detector is not viewing any object. Only happens once.
   if (totalAmb == 0) {                                                      // only on the first iteration because totalAmb is initialized as 0
     ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
@@ -109,9 +108,9 @@ void loop() {
     delay(1000);                                                            // allow some time for the gripper to settle
     tcs.getRawData(&r, &g, &b, &c);                                         // read R,G,B,C
     int scanned = r + g + b;                                                // scanned is the summation of the read values
-    if (abs(scanned - totalAmb) > 10) {                                     // if the difference between scanned and totalAmb is greater than 10, an object is considered to be present
+    if (abs(scanned - totalAmb) > 1) {                                     // if the difference between scanned and totalAmb is greater than 10, an object is considered to be present
       pickup = true;                                                        // set pickup flag to true
-      if (scanned > 50) {                                                   // if scanned object summation is larger than 50 (the white rock), consider it as a bad object
+      if (scanned > 11) {                                                   // if scanned object summation is larger than 50 (the white rock), consider it as a bad object
         badobj = true;                                                      
       } else {                                                              // otherwise it is likely the green object as it has a low summation value
         goodobj = true;
@@ -184,8 +183,9 @@ void loop() {
             goodobj = false;
           }
         }
+        break;
       }
-      break;
+
     }
   }
   // Pickup process for a bad object (white rock)
@@ -209,31 +209,17 @@ void loop() {
         ul_CurMillis = millis();
         if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
           ul_PrevMillis = ul_CurMillis;
-          if (i_ServoArmPos > 150){                                         // Does not exceed 150 degrees to differentiate from goodobj process
+          if (i_ServoArmPos > 100){                                         // Does not exceed 150 degrees to differentiate from goodobj process
             ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
             i_ServoArmPos--;
           }
-          if (i_ServoArmPos <= 150){                                        // When desired position is reached, go to next state
+          if (i_ServoArmPos <= 100){                                        // When desired position is reached, go to next state
             ui_State++;
           }
         }
         break;
       }
-      case 2: {                                                             // case 2: open the gripper, drop the object, same as goodobj process
-        ul_CurMillis = millis();
-        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
-          ul_PrevMillis = ul_CurMillis;
-          if (i_ServoGripPos > i_ServoGripStart){
-            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
-            i_ServoGripPos--;
-          }
-          if (i_ServoGripPos <= i_ServoGripStart){
-            ui_State++;
-          }
-        }
-        break;
-      }
-      case 3: {                                                             // case 3: return to arm starting position, same as goodobj process
+      case 2: {                                                             // case 3: return to arm starting position, same as goodobj process
         ul_CurMillis = millis();
         if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
           ul_PrevMillis = ul_CurMillis;
@@ -242,14 +228,28 @@ void loop() {
             i_ServoArmPos++;
           }
           if (i_ServoArmPos >= i_ServoArmStart){                            // reset state and flags when finished
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 3: {                                                             // case 2: open the gripper, drop the object, same as goodobj process
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoGripPos > i_ServoGripStart){
+            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
+            i_ServoGripPos--;
+          }
+          if (i_ServoGripPos <= i_ServoGripStart){
             ui_State = 0;
             pickup = false;
             badobj = false;
             goodobj = false;
           }
         }
+        break;
       }
-      break;
     }
   }
 
@@ -272,7 +272,7 @@ void doHeartbeat() {
 // Note that the constants for minimum and maximum duty cycle may need to be adjusted for a specific motor
 long degreesToDutyCycle(int deg) {
   const long cl_MinDutyCycle = 1650;                 // duty cycle for 0 degrees
-  const long cl_MaxDutyCycle = 8175;                 // duty cycle for 180 degrees
+  const long cl_MaxDutyCycle = 7800;                 // duty cycle for 180 degrees
 
   long l_DutyCycle = map(deg, 0, 180, cl_MinDutyCycle, cl_MaxDutyCycle);  // convert to duty cycle
   return l_DutyCycle;
